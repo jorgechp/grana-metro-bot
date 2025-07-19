@@ -26,6 +26,7 @@ API_BASE = "https://movgr.apis.mianfg.me"
 FAVORITOS_FILE = "favoritos.json"
 favoritos = {}
 paradas = {}
+ultimo_mensaje_menu = {}
 
 # Menú principal del bot (teclado persistente)
 MAIN_MENU = ReplyKeyboardMarkup(
@@ -109,6 +110,33 @@ def cargar_paradas():
     data = resp.json()
     paradas = {p["id"]: p["nombre"] for p in data}
 
+async def enviar_mensaje_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Envía el mensaje del menú principal eliminando el anterior si existe.
+
+    Args:
+        update: Objeto Update de Telegram.
+        context: Objeto ContextTypes con información contextual.
+
+    Returns:
+        None
+    """
+    user_id = update.effective_user.id
+
+    # Intentar eliminar el mensaje anterior si existe
+    if user_id in ultimo_mensaje_menu:
+        try:
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=ultimo_mensaje_menu[user_id]
+            )
+        except Exception:
+            pass  # Ignorar errores si el mensaje ya fue eliminado
+
+    # Enviar nuevo mensaje y guardar su ID
+    mensaje = await update.message.reply_text("¿Qué deseas hacer?", reply_markup=MAIN_MENU)
+    ultimo_mensaje_menu[user_id] = mensaje.message_id
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Muestra al usuario la lista de paradas para consultar trenes disponibles.
@@ -133,7 +161,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Selecciona una parada para ver los próximos trenes:",
         reply_markup=InlineKeyboardMarkup(botones)
     )
-    await update.message.reply_text("¿Qué deseas hacer?", reply_markup=MAIN_MENU)
+    await enviar_mensaje_menu(update, context)
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -161,7 +189,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info = r.json()
         mensajes = [f"🚉 *{nombre}*"]
         for t in info["proximos"][:3]:
-            mensajes.append(f"• En {t['minutos']} min → {t['direccion']}")
+            mensajes.append(f"• En {t['minutos']} min → {t['direccion']}")
 
         fav = parada_id in get_favoritos(user_id)
         texto = "\n".join(mensajes) + ("\n⭐ Favorita" if fav else "")
@@ -189,13 +217,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = "⚠️ Error al actualizar favoritas."
 
         await query.edit_message_text(msg)
-        await query.message.reply_text("¿Qué deseas hacer?", reply_markup=MAIN_MENU)
+        mensaje = await query.message.reply_text("¿Qué deseas hacer?", reply_markup=MAIN_MENU)
+        ultimo_mensaje_menu[user_id] = mensaje.message_id
 
     elif action == "del":
         get_favoritos(user_id).discard(parada_id)
         guardar_favoritos()
         await query.edit_message_text(f"❌ {paradas.get(parada_id, parada_id)} eliminada de tus favoritas.")
-        await query.message.reply_text("¿Qué deseas hacer?", reply_markup=MAIN_MENU)
+        mensaje = await query.message.reply_text("¿Qué deseas hacer?", reply_markup=MAIN_MENU)
+        ultimo_mensaje_menu[user_id] = mensaje.message_id
 
 async def favoritas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -224,7 +254,7 @@ async def favoritas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info = r.json()
         lines = [f"🚉 *{nombre}*"]
         for t in info["proximos"][:2]:
-            lines.append(f"• En {t['minutos']} min → {t['direccion']}")
+            lines.append(f"• En {t['minutos']} min → {t['direccion']}")
         texto = "\n".join(lines)
 
         boton = InlineKeyboardButton(f"❌ Eliminar {nombre}", callback_data=f"del:{pid}")
@@ -232,7 +262,7 @@ async def favoritas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=reply_markup)
 
-    await update.message.reply_text("¿Qué deseas hacer?", reply_markup=MAIN_MENU)
+    await enviar_mensaje_menu(update, context)
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -253,6 +283,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💻 Código fuente en GitHub: [Ver repositorio](https://github.com/jorgechp/grana-metro-bot)\n"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=MAIN_MENU)
+    await enviar_mensaje_menu(update, context)
 
 async def mensaje_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
