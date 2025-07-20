@@ -35,7 +35,7 @@ Crea un archivo `.env` con tu token de Telegram:
 TELEGRAM_TOKEN=123456789:ABCDEF...
 ```
 
-## 📦 Ejecución
+## 📦 Ejecución y uso
 
 ```bash
 python bot.py
@@ -50,7 +50,7 @@ Distribuido bajo la [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.txt).
 Desarrollado por Jorge Chamorro Padial.
 Código fuente en: [https://github.com/jorgechp/grana-metro-bot](https://github.com/jorgechp/grana-metro-bot)
 
-Agradecimientos especiales a Miguel Ángel Fernández por la API MovGR.
+Agradecimientos especiales a Miguel Ángel Fernández por la [API MovGR](https://github.com/mianfg/movgr-api).
 
 ---
 
