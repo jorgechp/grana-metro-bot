@@ -1,7 +1,7 @@
 """
 Bot de Telegram para consultar horarios en tiempo real del Metro de Granada,
 gestionar favoritas y alertas de llegada con selección de umbral y dirección,
-con notificaciones automáticas y visualización de la situación de los metros.
+con notificaciones automáticas y visualización de la Situación de los trenes.
 
 Licencia: GNU General Public License v3.0
 Autor: Jorge Chamorro Padial
@@ -53,7 +53,7 @@ alertas    = {}
 MAIN_MENU = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton("🔍 Ver paradas"), KeyboardButton("⭐ Favoritas")],
-        [KeyboardButton("🚆 Situación de los metros"), KeyboardButton("📄 Información")]
+        [KeyboardButton("🚆 Situación de los trenes"), KeyboardButton("📄 Información")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
@@ -273,44 +273,79 @@ async def favoritas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     await enviar_mensaje_menu(update, context)
 
-# ── Situación de los metros ───────────────────────────────────────────────────
+# ── Situación de los trenes ───────────────────────────────────────────────────
 async def estado_textual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Muestra la situación de los metros en dos columnas:
-    🚇 si tren < 3 min, solo minutos si ≥ 3 min, — si no hay tren.
+    Muestra la Situación de los trenes en dos columnas con la ruta invertida
+    a la derecha. Si no hay información de llegada para una parada, solo
+    se muestra su nombre; si hay, se antepone 🚇 al nombre cuando el tren
+    llega en <3 min.
+
+    Args:
+        update (Update): actualización recibida de Telegram.
+        context (ContextTypes.DEFAULT_TYPE): contexto del handler.
+
+    Returns:
+        None
     """
+    # 1) Obtener chat_id y datos de la API
     chat_id = update.effective_chat.id
     resp = requests.get(f"{API_BASE}/metro/llegadas")
     resp.raise_for_status()
     datos = resp.json()
     lleg = {e["parada"]["id"]: e.get("proximos", []) for e in datos}
-    orden = list(paradas.keys())
 
+    # 2) Preparar orden normal e invertido
+    orden = list(paradas.keys())
+    orden_rev = list(reversed(orden))
+
+    # 3) Construir teclado por filas
     teclado = []
-    for pid in orden:
-        nombre = paradas.get(pid, pid)
-        prox = lleg.get(pid, [])
-        t_arm = next((t["minutos"] for t in prox if t["direccion"] == "Armilla"), None)
-        t_alb = next((t["minutos"] for t in prox if t["direccion"] == "Albolote"), None)
-        txt_a = f"{nombre} {'🚇' if t_arm is not None and t_arm < 3 else ''}{t_arm or '—'}m"
-        txt_b = f"{nombre} {'🚇' if t_alb is not None and t_alb < 3 else ''}{t_alb or '—'}m"
+    for i, pid_arm in enumerate(orden):
+        pid_alb = orden_rev[i]
+
+        # extraer minutos próximos
+        prox_arm = next((t["minutos"] for t in lleg.get(pid_arm, []) if t["direccion"] == "Armilla"), None)
+        prox_alb = next((t["minutos"] for t in lleg.get(pid_alb, []) if t["direccion"] == "Albolote"), None)
+
+        # texto columna Armilla (emoji a la izquierda si <3 min)
+        if prox_arm is None:
+            txt_a = paradas[pid_arm]
+        else:
+            if prox_arm < 3:
+                txt_a = f"🚇 {paradas[pid_arm]} ({prox_arm}m)"
+            else:
+                txt_a = f"{paradas[pid_arm]} ({prox_arm}m)"
+
+        # texto columna Albolote (emoji a la izquierda si <3 min)
+        if prox_alb is None:
+            txt_b = paradas[pid_alb]
+        else:
+            if prox_alb < 3:
+                txt_b = f"🚇 {paradas[pid_alb]} ({prox_alb}m)"
+            else:
+                txt_b = f"{paradas[pid_alb]} ({prox_alb}m)"
+
         teclado.append([
-            InlineKeyboardButton(txt_a, callback_data=f"ver:{pid}"),
-            InlineKeyboardButton(txt_b, callback_data=f"ver:{pid}")
+            InlineKeyboardButton(txt_a, callback_data=f"ver:{pid_arm}"),
+            InlineKeyboardButton(txt_b, callback_data=f"ver:{pid_alb}")
         ])
 
-    await context.bot.send_message(
-        chat_id,
-        "🚆 *Situación de los metros*\n"
-        "_Izquierda: Hacia Armilla_  |  _Derecha: Hacia Albolote_\n",
-        parse_mode="Markdown"
+    # 4) Enviar mensajes
+    cabecera = (
+        "🚆 *Situación de los trenes*\n"
+        "_Izquierda: Hacia Armilla_  |  _Derecha: Hacia Albolote_\n"
+        "🚇 Tren < 3 min"
     )
+    await context.bot.send_message(chat_id, cabecera, parse_mode="Markdown")
     await context.bot.send_message(
         chat_id,
         "Pulsa una parada para ver detalles:",
         reply_markup=InlineKeyboardMarkup(teclado)
     )
     await enviar_mensaje_menu(update, context)
+
+
 
 # ── Info ─────────────────────────────────────────────────────────────────────
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -368,7 +403,7 @@ async def mensaje_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
     elif txt == "⭐ Favoritas":
         await favoritas_cmd(update, context)
-    elif txt == "🚆 Situación de los metros":
+    elif txt == "🚆 Situación de los trenes":
         await estado_textual(update, context)
     elif txt == "📄 Información":
         await info_cmd(update, context)
